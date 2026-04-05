@@ -46,10 +46,6 @@
 
 <img width="1732" height="2302" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/f72d3dac-cc97-46ac-a17f-deaf65ecc7d4" />
 
-### 前端状态机（简历 / JD 复用逻辑）
-
-<img width="1069" height="3512" alt="mermaid-diagram (1)" src="https://github.com/user-attachments/assets/d8c85813-ed00-4f02-a2b4-942746f803c6" />
-
 ---
 
 ## 技术栈
