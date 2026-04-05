@@ -1,11 +1,179 @@
-# 简历助手 ResumeAgent
+# 西米求职 · AI 简历诊断助手
 
-前后端分离的简历助手应用，基于 Dify API 实现四项 AI 功能：岗位匹配度、经历润色、定制自我介绍、面试可能问题。
+> 上传简历 + 粘贴岗位描述，一键获得岗位匹配度、简历优化建议、定制自我介绍、高频面试问题预测。
+
+---
+
+## 目录
+
+- [功能演示](#功能演示)
+- [系统架构](#系统架构)
+- [技术栈](#技术栈)
+- [快速启动](#快速启动)
+- [项目结构](#项目结构)
+- [API 接口](#api-接口)
+- [Dify Chatflow 配置](#dify-chatflow-配置)
+- [智能复用机制](#智能复用机制)
+
+---
+
+## 功能演示
+
+### 主页面
+
+<!-- TODO: 粘贴主页面截图 -->
+
+### 岗位匹配度分析
+
+<!-- TODO: 粘贴 match_score 结果页截图 -->
+
+### 简历优化建议
+
+<!-- TODO: 粘贴 polish_experience 结果页截图 -->
+
+### 定制自我介绍
+
+<!-- TODO: 粘贴 custom_intro 结果页截图 -->
+
+### 高频面试问题预测
+
+<!-- TODO: 粘贴 interview_questions 结果页截图 -->
+
+---
+
+## 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         用户浏览器                               │
+│                                                                 │
+│  ┌──────────────┐   ┌──────────────┐   ┌────────────────────┐  │
+│  │ 简历上传      │   │  JD 输入框   │   │  功能选择（单选）   │  │
+│  │ IndexedDB    │   │ localStorage │   │  4 种 action        │  │
+│  │ 持久化       │   │  持久化      │   │                    │  │
+│  └──────┬───────┘   └──────┬───────┘   └────────┬───────────┘  │
+│         │                  │                    │               │
+│         └──────────────────┴────────────────────┘               │
+│                            │                                    │
+│               FormData (multipart/form-data)                    │
+│               · action     [必填]                               │
+│               · resume     [首次 / 文件变更时]                   │
+│               · jd         [首次 / 内容变更时]                   │
+│               · conversation_id  [第二轮起复用]                  │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ POST /api/resume-assistant
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Node.js / Express 后端                        │
+│                                                                 │
+│  1. multer 解析 multipart body                                   │
+│  2. 若有新简历 → POST /files/upload → 获取 upload_file_id        │
+│  3. 构造 inputs：{ action, [jd], [resume] }                      │
+│  4. POST /chat-messages（Chatflow 模式）                         │
+│     · 传入 conversation_id 复用同一对话上下文                     │
+│     · 返回 answer + conversation_id                              │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+          ┌──────────────────┴───────────────────┐
+          │                                      │
+          ▼                                      ▼
+┌──────────────────┐                  ┌──────────────────────────┐
+│  Dify Files API  │                  │   Dify Chat API          │
+│  /files/upload   │                  │   /chat-messages         │
+│                  │                  │                          │
+│  返回            │                  │  Chatflow 内部：          │
+│  upload_file_id  │                  │  · 读取 sys.files        │
+└──────────────────┘                  │  · 读取 inputs.jd        │
+                                      │  · 路由至对应 action 分支 │
+                                      │  · 调用 LLM（Google      │
+                                      │    Gemini / OpenAI 等）  │
+                                      │  · 返回结构化 JSON        │
+                                      └──────────────────────────┘
+                                                 │
+                             ┌───────────────────┴────────────────────┐
+                             │         Dify 返回 JSON 结构示例          │
+                             │                                         │
+                             │  match_score:                           │
+                             │  { score, overall_comment,              │
+                             │    matched_points[], gaps[],            │
+                             │    suggestions[] }                      │
+                             │                                         │
+                             │  polish_experience:                     │
+                             │  { summary, items[]:                    │
+                             │    { section, original,                 │
+                             │      optimized, reason } }              │
+                             │                                         │
+                             │  custom_intro:                          │
+                             │  { opening, highlights[],               │
+                             │    full_script }                        │
+                             │                                         │
+                             │  interview_questions:                   │
+                             │  { summary, questions[]:               │
+                             │    { question, answer } }               │
+                             └─────────────────────────────────────────┘
+```
+
+### 前端状态机（简历 / JD 复用逻辑）
+
+```
+                      ┌─────────────┐
+                      │  页面加载    │
+                      └──────┬──────┘
+                             │ 从 IndexedDB 恢复简历
+                             │ 从 localStorage 恢复 JD
+                             ▼
+                      ┌─────────────┐
+                      │  input 视图  │◄──────────────────────────┐
+                      └──────┬──────┘                           │
+                             │ 点击「开始智能诊断」                │
+                             ▼                                  │
+               ┌────────────────────────┐                       │
+               │  判断 sendResume?       │                       │
+               │  = !resumeSentToServer │                       │
+               │    && !!resumeFile     │                       │
+               │                        │                       │
+               │  判断 sendJd?           │                       │
+               │  = !jdSentToServer     │                       │
+               │    && jd.length > 0    │                       │
+               └───────────┬────────────┘                       │
+                           │ 标记 sent = true（发送前）            │
+                           ▼                                    │
+               ┌────────────────────────┐                       │
+               │  POST /api/resume-     │                       │
+               │  assistant             │                       │
+               │  + conversation_id     │                       │
+               └───────────┬────────────┘                       │
+                           │                                    │
+               ┌───────────┴───────────┐                        │
+               ▼                       ▼                        │
+          ┌─────────┐            ┌──────────┐                   │
+          │  成功    │            │  失败     │                   │
+          │  保存    │            │  显示错误  │                   │
+          │  conv_id │            └──────────┘                   │
+          └─────┬───┘                                           │
+                │ 跳转 result 视图                                │
+                ▼                                               │
+         ┌────────────┐                                         │
+         │ result 视图 │──────── 点击「返回」────────────────────┘
+         │ 渲染 JSON  │         （保留所有已填内容）
+         └────────────┘
+```
+
+---
 
 ## 技术栈
 
-- **前端**：React + Vite
-- **后端**：Node.js + Express + Multer
+| 层级 | 技术 |
+|------|------|
+| 前端框架 | React 18 + Vite |
+| 样式 | Tailwind CSS v4 (`@tailwindcss/vite`) |
+| 本地持久化 | IndexedDB（简历文件）+ localStorage（JD 文本）|
+| 后端框架 | Node.js + Express |
+| 文件解析 | multer（multipart/form-data）|
+| AI 平台 | Dify Chatflow |
+| LLM | Google Gemini（可在 Dify 内切换）|
+
+---
 
 ## 快速启动
 
@@ -16,27 +184,28 @@ cd backend
 cp .env.example .env
 ```
 
-编辑 `.env`，填写你的 Dify API Key：
+编辑 `.env`：
 
-```
-DIFY_API_KEY=your_dify_api_key_here
+```env
+DIFY_API_KEY=app-xxxxxxxxxxxxxxxxxxxx
 DIFY_BASE_URL=https://api.dify.ai/v1
+DIFY_APP_MODE=chatflow          # chatflow 或 workflow
 PORT=3001
 ```
 
-### 2. 安装并启动后端
+### 2. 启动后端
 
 ```bash
 cd backend
 npm install
-npm run dev     # 开发模式（nodemon 热重载）
+npm run dev     # nodemon 热重载
 # 或
 npm start       # 生产模式
 ```
 
-后端默认运行在 `http://localhost:3001`
+后端运行在 `http://localhost:3001`
 
-### 3. 安装并启动前端
+### 3. 启动前端
 
 ```bash
 cd frontend
@@ -44,67 +213,102 @@ npm install
 npm run dev
 ```
 
-前端默认运行在 `http://localhost:5173`
+前端运行在 `http://localhost:5173`，Vite 自动将 `/api/*` 代理到后端。
 
-> 前端开发服务器通过 Vite proxy 自动将 `/api` 请求转发到后端。
+---
 
 ## 项目结构
 
 ```
-ResumeAgent/
+ResumeAgent2/
 ├── backend/
-│   ├── package.json
 │   ├── .env.example
+│   ├── package.json
 │   └── src/
-│       ├── index.js                    # Express 入口
+│       ├── index.js                      # Express 入口，注册路由
 │       └── routes/
-│           └── resumeAssistant.js      # 核心路由逻辑
+│           └── resumeAssistant.js        # 核心路由：文件上传 + Dify 调用
+│
 └── frontend/
-    ├── package.json
-    ├── vite.config.js
+    ├── vite.config.js                    # 含 /api 反向代理配置
     ├── index.html
     └── src/
-        ├── App.jsx                     # 根组件（状态管理）
+        ├── App.jsx                       # 全局状态、视图切换、提交逻辑
         ├── main.jsx
-        ├── index.css
+        ├── index.css                     # Tailwind + 自定义动画
         └── components/
-            ├── JdInput.jsx             # JD 文本框
-            ├── ResumeUpload.jsx        # 文件上传（支持拖拽）
-            ├── ActionButtons.jsx       # 四个功能按钮
-            └── ResultPanel.jsx         # 结果/loading/错误展示
+            ├── Header.jsx                # 顶部导航栏
+            ├── HeroSection.jsx           # 标题 + 副文案
+            ├── ResumeUploadCard.jsx      # 简历上传（拖拽 / 点击）
+            ├── JobDescriptionCard.jsx    # JD 文本输入框
+            ├── FeatureOptionGrid.jsx     # 四功能 2×2 网格选择
+            ├── PrimaryActionSection.jsx  # 「开始智能诊断」按钮
+            ├── AnalysisProgressPanel.jsx # 分析进度面板（三步骤）
+            ├── ResultPage.jsx            # 结果页外壳
+            ├── DifyResultRenderer.jsx    # JSON 结果智能渲染器
+            └── FontPreview.jsx           # 字体预览（开发用）
 ```
 
-## 接口说明
+---
 
-### POST /api/resume-assistant
+## API 接口
 
-**请求格式**：`multipart/form-data`
+### `POST /api/resume-assistant`
 
-| 字段     | 类型   | 说明                                                    |
-| -------- | ------ | ------------------------------------------------------- |
-| jd       | string | 目标岗位职位描述                                         |
-| action   | string | 任务类型，取值见下表                                     |
-| resume   | File   | 简历文件（pdf / doc / docx / txt）                       |
+**Content-Type**: `multipart/form-data`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `action` | string | ✅ | 任务类型，见下表 |
+| `resume` | File | 可选 | 简历文件（pdf / doc / docx / txt），首次或文件变更时传 |
+| `jd` | string | 可选 | 岗位描述，首次或内容变更时传 |
+| `conversation_id` | string | 可选 | Dify 会话 ID，第二轮起传入以复用上下文 |
 
 **action 取值**：
 
-| action               | 功能         |
-| -------------------- | ------------ |
-| `match_score`        | 岗位匹配度   |
-| `polish_experience`  | 经历润色     |
-| `custom_intro`       | 定制自我介绍 |
-| `interview_questions`| 面试可能问题 |
+| action | 功能 | 返回 JSON 字段 |
+|--------|------|----------------|
+| `match_score` | 岗位匹配度分析 | `score`, `overall_comment`, `matched_points[]`, `gaps[]`, `suggestions[]` |
+| `polish_experience` | 简历优化建议 | `summary`, `items[].{section, original, optimized, reason}` |
+| `custom_intro` | 定制自我介绍 | `opening`, `highlights[]`, `full_script` |
+| `interview_questions` | 高频面试问题预测 | `summary`, `questions[].{question, answer}` |
 
 **响应**：
 
 ```json
-{ "answer": "AI 返回的分析内容" }
+{
+  "answer": "{ ... }",
+  "conversation_id": "abc-123-..."
+}
 ```
 
-## Dify 工作流配置
+---
 
-在 Dify 工作流中需要配置以下三个输入变量：
+## Dify Chatflow 配置
 
-- `jd`：string 类型
-- `action`：string 类型
-- `resume`：file 类型（document）
+在 Dify Chatflow 中需要配置以下输入变量：
+
+| 变量名 | 类型 | 说明 |
+|--------|------|------|
+| `action` | String | 任务类型，必填 |
+| `jd` | String | 岗位描述，选填 |
+| `resume` | File（document）| 简历文件，选填 |
+
+Chatflow 内部根据 `action` 的值路由到不同分支，每个分支调用 LLM 并要求其返回对应结构的 JSON。`sys.conversation_id` 由 Dify 自动管理，前端通过回传 `conversation_id` 复用同一对话，使后续请求无需重复传递简历和 JD。
+
+---
+
+## 智能复用机制
+
+为避免每次都将大文件和长文本重新传给 Dify，前端维护两个布尔标记：
+
+| 标记 | 含义 | 重置时机 |
+|------|------|----------|
+| `resumeSentToServer` | 当前简历已被 Dify 接收 | 用户上传新文件 / 删除文件 |
+| `jdSentToServer` | 当前 JD 已被 Dify 接收 | 用户编辑或删除 JD 文本 |
+
+每次提交前：
+- `sendResume = !resumeSentToServer && !!resumeFile`
+- `sendJd = !jdSentToServer && jd.trim().length > 0`
+
+标记在**发送请求前**置为 `true`（而非成功后），避免因 Dify 报错（如配额耗尽）导致无限重传。
