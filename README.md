@@ -21,7 +21,8 @@
 
 ### 主页面
 
-<!-- TODO: 粘贴主页面截图 -->
+<img width="1287" height="1252" alt="image" src="https://github.com/user-attachments/assets/255ed833-a998-4b61-b85e-4d23f463dbc2" />
+
 
 ### 岗位匹配度分析
 
