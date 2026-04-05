@@ -44,74 +44,8 @@
 
 ## 系统架构
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         用户浏览器                               │
-│                                                                 │
-│  ┌──────────────┐   ┌──────────────┐   ┌────────────────────┐  │
-│  │ 简历上传      │   │  JD 输入框   │   │  功能选择（单选）   │  │
-│  │ IndexedDB    │   │ localStorage │   │  4 种 action        │  │
-│  │ 持久化       │   │  持久化      │   │                    │  │
-│  └──────┬───────┘   └──────┬───────┘   └────────┬───────────┘  │
-│         │                  │                    │               │
-│         └──────────────────┴────────────────────┘               │
-│                            │                                    │
-│               FormData (multipart/form-data)                    │
-│               · action     [必填]                               │
-│               · resume     [首次 / 文件变更时]                   │
-│               · jd         [首次 / 内容变更时]                   │
-│               · conversation_id  [第二轮起复用]                  │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ POST /api/resume-assistant
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Node.js / Express 后端                        │
-│                                                                 │
-│  1. multer 解析 multipart body                                   │
-│  2. 若有新简历 → POST /files/upload → 获取 upload_file_id        │
-│  3. 构造 inputs：{ action, [jd], [resume] }                      │
-│  4. POST /chat-messages（Chatflow 模式）                         │
-│     · 传入 conversation_id 复用同一对话上下文                     │
-│     · 返回 answer + conversation_id                              │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-          ┌──────────────────┴───────────────────┐
-          │                                      │
-          ▼                                      ▼
-┌──────────────────┐                  ┌──────────────────────────┐
-│  Dify Files API  │                  │   Dify Chat API          │
-│  /files/upload   │                  │   /chat-messages         │
-│                  │                  │                          │
-│  返回            │                  │  Chatflow 内部：          │
-│  upload_file_id  │                  │  · 读取 sys.files        │
-└──────────────────┘                  │  · 读取 inputs.jd        │
-                                      │  · 路由至对应 action 分支 │
-                                      │  · 调用 LLM（Google      │
-                                      │    Gemini / OpenAI 等）  │
-                                      │  · 返回结构化 JSON        │
-                                      └──────────────────────────┘
-                                                 │
-                             ┌───────────────────┴────────────────────┐
-                             │         Dify 返回 JSON 结构示例          │
-                             │                                         │
-                             │  match_score:                           │
-                             │  { score, overall_comment,              │
-                             │    matched_points[], gaps[],            │
-                             │    suggestions[] }                      │
-                             │                                         │
-                             │  polish_experience:                     │
-                             │  { summary, items[]:                    │
-                             │    { section, original,                 │
-                             │      optimized, reason } }              │
-                             │                                         │
-                             │  custom_intro:                          │
-                             │  { opening, highlights[],               │
-                             │    full_script }                        │
-                             │                                         │
-                             │  interview_questions:                   │
-                             │  { summary, questions[]:               │
-                             │    { question, answer } }               │
-                             └─────────────────────────────────────────┘
+<img width="1732" height="2302" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/f72d3dac-cc97-46ac-a17f-deaf65ecc7d4" />
+
 ```
 
 ### 前端状态机（简历 / JD 复用逻辑）
