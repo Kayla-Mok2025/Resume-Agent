@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── 暖橙/杏黄色系 ── */
+  --color-bg: #F9F2D7;
+  --color-card: #FFF9EE;
+  --color-surface: #FEF7E6;
+  --color-orange-main: #FC7D36;
+  --color-orange-deep: #E06020;
+  --color-orange-light: #FEF0D5;
+  --color-yellow-main: #F4E097;
+  --color-yellow-light: #FEF7E0;
+  --color-text-heading: #2D1600;
+  --color-text-body: #5C3A1E;
+  --color-text-muted: #9A7050;
+  --color-border-default: #F0E0C8;
+  --color-border-hover: #E8C8A0;
+
+  --font-sans: "Noto Serif SC", "Songti SC", "SimSun", serif;
+
+  --animate-shimmer: shimmer 2.4s ease-in-out infinite;
+  --animate-fade-in: fadeIn 0.45s cubic-bezier(0.16,1,0.3,1) forwards;
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400% 0; }
+  100% { background-position: 400% 0; }
+}
+
+@keyframes fadeIn {
+  0%   { opacity: 0; transform: translateY(16px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15%       { transform: translateX(-5px); }
+  30%       { transform: translateX(5px); }
+  45%       { transform: translateX(-4px); }
+  60%       { transform: translateX(4px); }
+  75%       { transform: translateX(-2px); }
+  90%       { transform: translateX(2px); }
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-family: "Noto Serif SC", "Songti SC", "SimSun", serif;
+    background: #F9F2D7;
+    min-height: 100vh;
+    color: #5C3A1E;
+  }
+  *:focus-visible {
+    outline: none;
+  }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: #FEF7E6; }
+  ::-webkit-scrollbar-thumb { background: #F4C890; border-radius: 3px; }
+}
+
+@layer utilities {
+  .shimmer-bar {
+    background: linear-gradient(
+      90deg,
+      #FC7D36 0%,
+      #F4B060 30%,
+      #F4E097 55%,
+      #F4B060 75%,
+      #FC7D36 100%
+    );
+    background-size: 400% 100%;
+    animation: shimmer 2.4s ease-in-out infinite;
+  }
+
+  .animate-shake {
+    animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.45s cubic-bezier(0.16,1,0.3,1) forwards;
+  }
+}

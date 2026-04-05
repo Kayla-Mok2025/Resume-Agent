@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx vite:*)",
+      "Bash(node -e \"console.log\\(require\\(''./node_modules/tailwindcss/package.json''\\).version\\)\")",
+      "Bash(node -e \"try{require\\(''@tailwindcss/vite''\\)}catch\\(e\\){console.log\\(''no vite plugin''\\)} ; try{require\\(''@tailwindcss/postcss''\\)}catch\\(e\\){console.log\\(''no postcss plugin''\\)}\")",
+      "Bash(npm install:*)",
+      "Bash(cmd /c \"taskkill /PID 50644 /F\")",
+      "Bash(cmd /c \"taskkill /PID 58436 /F\")",
+      "Bash(cmd /c \"taskkill /PID 36840 /F\")",
+      "Bash(cmd /c \"taskkill /PID 30264 /F\")",
+      "Bash(netstat -ano)",
+      "Bash(powershell -Command \"Stop-Process -Id 50644,58436,36840,30264,17120 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")"
+    ]
+  }
+}
