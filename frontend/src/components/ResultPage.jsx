@@ -8,6 +8,35 @@ const ACTION_LABELS = {
   question_prediction: '高频面试问题预测',
 };
 
+const ERROR_CONFIG = {
+  network: { emoji: '📡', color: '#C2620A', bg: '#FFF3E8' },
+  quota:   { emoji: '😴', color: '#C2620A', bg: '#FFF9EE' },
+  upload:  { emoji: '📄', color: '#C2620A', bg: '#FFF3E8' },
+  dify:    { emoji: '🤖', color: '#C2620A', bg: '#FFF3E8' },
+  server:  { emoji: '⚙️', color: '#B91C1C', bg: '#FFF5F5' },
+  unknown: { emoji: '⚠️', color: '#C2620A', bg: '#FFF3E8' },
+};
+
+function ErrorCard({ error }) {
+  // 兼容旧的字符串格式
+  const info = typeof error === 'string'
+    ? { type: 'unknown', title: '分析失败', hint: error }
+    : error;
+
+  const { emoji, color, bg } = ERROR_CONFIG[info?.type] ?? ERROR_CONFIG.unknown;
+
+  return (
+    <div className="rounded-2xl px-8 py-10 text-center"
+      style={{ background: bg, boxShadow: '0 4px 24px rgba(252,125,54,0.12), 0 8px 40px rgba(0,0,0,0.08)' }}>
+      <div className="text-5xl mb-5">{emoji}</div>
+      <p className="font-bold text-[20px] mb-3" style={{ color: '#2D1600' }}>{info?.title}</p>
+      {info?.hint && (
+        <p className="text-sm leading-relaxed max-w-sm mx-auto" style={{ color: '#666' }}>{info.hint}</p>
+      )}
+    </div>
+  );
+}
+
 function CatLogo() {
   return (
     <img
@@ -73,12 +102,7 @@ export default function ResultPage({ result, error, selectedAction, onBack }) {
         </div>
 
         {error ? (
-          <div className="rounded-2xl px-8 py-10 text-center"
-            style={{ background: '#FFF9EE', boxShadow: '0 4px 24px rgba(252,125,54,0.12), 0 8px 40px rgba(0,0,0,0.08)' }}>
-            <div className="text-5xl mb-5">😴</div>
-            <p className="font-bold text-[20px] mb-2" style={{ color: '#2D1600' }}>{error}</p>
-            <p className="text-sm" style={{ color: '#999' }}>如有疑问请联系我们</p>
-          </div>
+          <ErrorCard error={error} />
         ) : (
           <DifyResultRenderer result={result} action={selectedAction} />
         )}

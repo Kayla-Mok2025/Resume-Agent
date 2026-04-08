@@ -55,6 +55,35 @@ async function clearFileFromDB() {
 }
 // ─────────────────────────────────────────────────────────────
 
+// ── 错误分类辅助函数 ──────────────────────────────────────────
+
+function classifyHttpError(status, message = '') {
+  let info;
+  if (status === 429 || message.includes('额度') || message.includes('quota')) {
+    info = { type: 'quota', title: '今日额度已用完', hint: '请明天再来，或联系管理员升级套餐' };
+  } else if (message.includes('文件上传') || message.includes('upload')) {
+    info = { type: 'upload', title: '简历上传失败', hint: message };
+  } else if (message.includes('Dify') || message.includes('Workflow') || message.includes('Chatflow')) {
+    info = { type: 'dify', title: 'AI 服务暂时不可用', hint: message };
+  } else if (status >= 500) {
+    info = { type: 'server', title: '服务器暂时异常', hint: message || `HTTP ${status}` };
+  } else {
+    info = { type: 'unknown', title: '请求失败', hint: message || `HTTP ${status}` };
+  }
+  const err = new Error(message);
+  err.errorInfo = info;
+  return err;
+}
+
+function classifyNetworkError(err) {
+  if (err.message === 'Failed to fetch') {
+    return { type: 'network', title: '无法连接到服务', hint: '请检查后端服务是否已启动，或网络连接是否正常' };
+  }
+  return { type: 'unknown', title: '分析请求失败', hint: err.message };
+}
+
+// ─────────────────────────────────────────────────────────────
+
 export default function App() {
   // ── 页面视图 ──────────────────────────────────────────────
   const [view, setView] = useState('input');
@@ -81,7 +110,7 @@ export default function App() {
   const [analysisState, setAnalysisState] = useState('idle'); // 'idle'|'analyzing'|'done'|'error'
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [result, setResult] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null); // { type, title, hint } | null
   const [timings, setTimings] = useState(null);
   const analysisTimerRef = useRef(null);
   const progressPanelRef = useRef(null);
@@ -195,7 +224,7 @@ export default function App() {
     setAnalysisState('analyzing');
     setAnalysisProgress(0);
     setResult('');
-    setError('');
+    setError(null);
     setTimings(null);
     startTimeRef.current = Date.now();
     apiDoneTimeRef.current = null;
@@ -212,7 +241,7 @@ export default function App() {
       const res = await fetch('/api/analyze', { method: 'POST', body: formData });
       const data = await res.json();
 
-      if (!res.ok) throw new Error(data.error || `请求失败（${res.status}）`);
+      if (!res.ok) throw classifyHttpError(res.status, data.error);
 
       apiDoneTimeRef.current = Date.now();
       clearInterval(analysisTimerRef.current);
@@ -231,7 +260,7 @@ export default function App() {
       clearInterval(analysisTimerRef.current);
       setAnalysisProgress(100);
       setAnalysisState('error');
-      setError('抱歉，今日额度已用完，请明天再来～');
+      setError(err.errorInfo || classifyNetworkError(err));
       setTimeout(() => setView('result'), 600);
     }
   };
