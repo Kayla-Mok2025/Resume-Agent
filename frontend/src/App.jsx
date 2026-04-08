@@ -241,7 +241,11 @@ export default function App() {
       const res = await fetch('/api/analyze', { method: 'POST', body: formData });
       const data = await res.json();
 
-      if (!res.ok) throw classifyHttpError(res.status, data.error);
+      if (!res.ok) {
+        const err = classifyHttpError(res.status, data.error);
+        if (data.detail) err.errorInfo.detail = data.detail;
+        throw err;
+      }
 
       apiDoneTimeRef.current = Date.now();
       clearInterval(analysisTimerRef.current);

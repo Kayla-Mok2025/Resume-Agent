@@ -18,20 +18,45 @@ const ERROR_CONFIG = {
 };
 
 function ErrorCard({ error }) {
-  // 兼容旧的字符串格式
   const info = typeof error === 'string'
     ? { type: 'unknown', title: '分析失败', hint: error }
     : error;
 
-  const { emoji, color, bg } = ERROR_CONFIG[info?.type] ?? ERROR_CONFIG.unknown;
+  const { emoji, bg } = ERROR_CONFIG[info?.type] ?? ERROR_CONFIG.unknown;
+
+  const detailText = info?.detail
+    ? (typeof info.detail === 'string' ? info.detail : JSON.stringify(info.detail, null, 2))
+    : null;
 
   return (
-    <div className="rounded-2xl px-8 py-10 text-center"
+    <div className="rounded-2xl px-8 py-10"
       style={{ background: bg, boxShadow: '0 4px 24px rgba(252,125,54,0.12), 0 8px 40px rgba(0,0,0,0.08)' }}>
-      <div className="text-5xl mb-5">{emoji}</div>
-      <p className="font-bold text-[20px] mb-3" style={{ color: '#2D1600' }}>{info?.title}</p>
-      {info?.hint && (
-        <p className="text-sm leading-relaxed max-w-sm mx-auto" style={{ color: '#666' }}>{info.hint}</p>
+
+      {/* 标题区 */}
+      <div className="text-center mb-6">
+        <div className="text-5xl mb-4">{emoji}</div>
+        <p className="font-bold text-[20px] mb-2" style={{ color: '#2D1600' }}>{info?.title}</p>
+        {info?.hint && (
+          <p className="text-sm leading-relaxed" style={{ color: '#888' }}>{info.hint}</p>
+        )}
+      </div>
+
+      {/* 详细错误信息 */}
+      {detailText && (
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(252,125,54,0.2)' }}>
+          <div className="px-4 py-2 flex items-center gap-2"
+            style={{ background: 'rgba(252,125,54,0.08)', borderBottom: '1px solid rgba(252,125,54,0.15)' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path d="M9 9h6M9 12h6M9 15h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"
+                stroke="#FC7D36" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            <span className="text-xs font-semibold" style={{ color: '#FC7D36' }}>Dify 返回的详细错误</span>
+          </div>
+          <pre className="px-4 py-3 text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap break-all"
+            style={{ color: '#555', background: 'rgba(255,255,255,0.6)', margin: 0, fontFamily: 'monospace' }}>
+            {detailText}
+          </pre>
+        </div>
       )}
     </div>
   );
