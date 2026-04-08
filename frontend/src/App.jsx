@@ -76,16 +76,6 @@ export default function App() {
   const [errors, setErrors] = useState({ resume: false, jd: false, feature: false });
   const [shaking, setShaking] = useState({ resume: false, jd: false, feature: false });
 
-  // ── 提交历史追踪（决定是否复用 Dify 已有内容）─────────────
-  // resumeSentToServer: Dify 已有该简历，无需再传
-  // jdSentToServer: Dify 已有该 JD，无需再传
-  const [resumeSentToServer, setResumeSentToServer] = useState(false);
-  const [jdSentToServer, setJdSentToServer] = useState(false);
-  // 诊断次数（0=首次，1+=再次）
-  const [diagnosisCount, setDiagnosisCount] = useState(0);
-
-  // ── Dify conversation_id（复用同一会话）──────────────────
-  const [conversationId, setConversationId] = useState(null);
 
   // ── 分析状态 ──────────────────────────────────────────────
   const [analysisState, setAnalysisState] = useState('idle'); // 'idle'|'analyzing'|'done'|'error'
@@ -115,8 +105,6 @@ export default function App() {
   const handleJdChange = (val) => {
     setJd(val);
     if (val.trim()) setErrors((e) => ({ ...e, jd: false }));
-    // 用户修改了 JD，标记需要重传
-    setJdSentToServer(false);
     clearTimeout(jdSaveTimer.current);
     jdSaveTimer.current = setTimeout(() => {
       localStorage.setItem('resume-assistant-jd', val);
@@ -126,7 +114,6 @@ export default function App() {
   // ── 删除 JD ───────────────────────────────────────────────
   const handleJdDelete = () => {
     setJd('');
-    setJdSentToServer(false);   // 标记：Dify 那边的 JD 已失效，下次需要重传
     localStorage.removeItem('resume-assistant-jd');
   };
 
@@ -138,13 +125,11 @@ export default function App() {
       setResumeFile(null);
       setUploadState('idle');
       setUploadProgress(0);
-      setResumeSentToServer(false); // 标记：Dify 那边的简历已失效，下次需要重传
       clearFileFromDB().catch(() => {});
       return;
     }
 
     setErrors((e) => ({ ...e, resume: false }));
-    setResumeSentToServer(false); // 新文件，需要重传
     setResumeFile(file);
     setUploadState('uploading');
     setUploadProgress(0);
@@ -180,10 +165,8 @@ export default function App() {
 
   // ── 验证失败时触发错误提示 ────────────────────────────────
   const handleValidationFail = () => {
-    // 简历：有可复用内容（已上传或已成功提交过）则视为有效
-    const resumeOk = uploadState === 'success' || resumeSentToServer;
-    // JD：有可复用内容（当前有内容或已成功提交过）则视为有效
-    const jdOk = jd.trim().length > 0 || jdSentToServer;
+    const resumeOk = uploadState === 'success';
+    const jdOk = jd.trim().length > 0;
 
     const newErrors = {
       resume: !resumeOk,
@@ -223,21 +206,10 @@ export default function App() {
     try {
       const formData = new FormData();
       formData.append('action', action);
+      formData.append('resume', resumeFile);
+      formData.append('jd', jd.trim());
 
-      // 决定本次是否传 resume 和 jd
-      const sendResume = !resumeSentToServer && !!resumeFile;
-      const sendJd     = !jdSentToServer && jd.trim().length > 0;
-
-      if (sendResume) formData.append('resume', resumeFile);
-      if (sendJd)     formData.append('jd', jd.trim());
-      if (conversationId) formData.append('conversation_id', conversationId);
-
-      // 发送前就标记：不管请求是否成功，Dify 已经收到了这次的数据
-      // 避免因 Dify 侧报错（如超额）导致下次重复传
-      if (sendResume) setResumeSentToServer(true);
-      if (sendJd)     setJdSentToServer(true);
-
-      const res = await fetch('/api/resume-assistant', { method: 'POST', body: formData });
+      const res = await fetch('/api/analyze', { method: 'POST', body: formData });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error || `请求失败（${res.status}）`);
@@ -248,9 +220,6 @@ export default function App() {
       setAnalysisState('done');
       setResult(data.answer || '');
 
-      setDiagnosisCount((c) => c + 1);
-      if (data.conversation_id) setConversationId(data.conversation_id);
-
       const apiSec = ((apiDoneTimeRef.current - startTimeRef.current) / 1000).toFixed(1);
       setTimeout(() => {
         const processSec = ((Date.now() - apiDoneTimeRef.current) / 1000).toFixed(1);
@@ -258,13 +227,11 @@ export default function App() {
         setView('result');
       }, 800);
     } catch (err) {
+      console.error('[分析失败]', err);
       clearInterval(analysisTimerRef.current);
       setAnalysisProgress(100);
       setAnalysisState('error');
-      const msg = err.message === 'Failed to fetch'
-        ? `无法连接到后端服务（Failed to fetch）\n\n可能原因：\n• 后端服务未启动，请运行 npm start 或 node server.js\n• 请检查端口是否正确（通常为 3000）\n• 查看终端是否有报错信息`
-        : err.message;
-      setError(msg);
+      setError('抱歉，今日额度已用完，请明天再来～');
       setTimeout(() => setView('result'), 600);
     }
   };
@@ -337,8 +304,6 @@ export default function App() {
           analysisState={analysisState}
           onStart={handleStart}
           onValidationFail={handleValidationFail}
-          resumeSentToServer={resumeSentToServer}
-          jdSentToServer={jdSentToServer}
         />
 
         {/* 分析进度面板 */}
@@ -348,7 +313,6 @@ export default function App() {
             progress={analysisProgress}
             startTime={startTimeRef.current}
             apiDoneTime={apiDoneTimeRef.current}
-            diagnosisCount={diagnosisCount}
           />
         </div>
       </main>

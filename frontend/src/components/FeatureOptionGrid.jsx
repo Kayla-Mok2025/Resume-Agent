@@ -41,7 +41,7 @@ const FEATURES = [
     ),
   },
   {
-    action: 'interview_questions',
+    action: 'question_prediction',
     label: '高频面试问题预测',
     icon: (
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none">

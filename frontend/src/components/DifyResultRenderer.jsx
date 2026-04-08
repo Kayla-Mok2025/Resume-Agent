@@ -41,7 +41,7 @@ function detectMode(text) {
   if (text.includes('【岗位匹配度】'))    return 'match_score';
   if (text.includes('【整体优化建议】'))   return 'polish_experience';
   if (text.includes('【定制自我介绍】'))   return 'custom_intro';
-  if (text.includes('【高概率面试问题】')) return 'interview_questions';
+  if (text.includes('【高概率面试问题】')) return 'question_prediction';
   return 'unknown';
 }
 
@@ -569,7 +569,7 @@ export default function DifyResultRenderer({ result, action }) {
   const json = tryParseJson(result);
   if (json && typeof json === 'object') {
     switch (action) {
-      case 'interview_questions': return <JsonInterviewQuestions data={json} />;
+      case 'question_prediction': return <JsonInterviewQuestions data={json} />;
       case 'match_score':         return <JsonMatchScore         data={json} />;
       case 'polish_experience':   return <JsonPolishExperience   data={json} />;
       case 'custom_intro':        return <JsonCustomIntro        data={json} />;
@@ -593,7 +593,7 @@ export default function DifyResultRenderer({ result, action }) {
     case 'match_score':         return <MatchScoreResult         sections={sections} />;
     case 'polish_experience':   return <PolishExperienceResult   sections={sections} />;
     case 'custom_intro':        return <CustomIntroResult        sections={sections} />;
-    case 'interview_questions': return <InterviewQuestionsResult sections={sections} />;
+    case 'question_prediction': return <InterviewQuestionsResult sections={sections} />;
     default:                    return <UnknownResult            result={result} />;
   }
 }

@@ -4,23 +4,89 @@ const axios = require('axios');
 const FormData = require('form-data');
 
 const router = express.Router();
-
 const upload = multer({ storage: multer.memoryStorage() });
 
 const DIFY_BASE_URL = process.env.DIFY_BASE_URL || 'https://api.dify.ai/v1';
 const DIFY_USER = 'resume-assistant-user';
+const VALID_ACTIONS = ['match_score', 'polish_experience', 'custom_intro', 'question_prediction'];
 
-router.post('/resume-assistant', upload.single('resume'), async (req, res) => {
+// ── JSON 提取：剥离 markdown 代码块后尝试解析 ──────────────────
+function extractJson(raw) {
+  if (!raw) return null;
+  try {
+    const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    return JSON.parse(stripped);
+  } catch {
+    return null;
+  }
+}
+
+// ── 按 action 整理 Dify 返回的 JSON ───────────────────────────
+function formatResult(json, action) {
+  if (!json || typeof json !== 'object') return null;
+
+  switch (action) {
+    case 'match_score':
+      return {
+        score: parseInt(json.score ?? json.match_score ?? 0, 10),
+        overall_comment: json.overall_comment ?? json.comment ?? '',
+        matched_points: Array.isArray(json.matched_points) ? json.matched_points : [],
+        gaps: Array.isArray(json.gaps) ? json.gaps : [],
+        suggestions: Array.isArray(json.suggestions) ? json.suggestions : [],
+      };
+
+    case 'polish_experience':
+      return {
+        summary: json.summary ?? json.overall ?? '',
+        items: Array.isArray(json.items)
+          ? json.items.map((item) => ({
+              section:   item.section   ?? item.title       ?? '',
+              original:  item.original  ?? item.before      ?? '',
+              optimized: item.optimized ?? item.after        ?? '',
+              reason:    item.reason    ?? item.explanation  ?? '',
+            }))
+          : [],
+      };
+
+    case 'custom_intro':
+      return {
+        opening:     json.opening    ?? '',
+        highlights:  Array.isArray(json.highlights) ? json.highlights : [],
+        full_script: json.full_script ?? json.intro ?? json.introduction ?? '',
+      };
+
+    case 'question_prediction':
+      return {
+        summary: json.summary ?? '',
+        questions: Array.isArray(json.questions)
+          ? json.questions.map((q) => ({
+              question: q.question ?? q.q ?? '',
+              answer:   q.answer   ?? q.a ?? '',
+            }))
+          : [],
+      };
+
+    default:
+      return json;
+  }
+}
+
+// ── POST /api/analyze ─────────────────────────────────────────
+router.post('/analyze', upload.single('resume'), async (req, res) => {
   const { jd, action } = req.body;
-  // multer 把所有字段都解析成字符串，过滤掉 "null" / "undefined" / 空字符串
-  const raw_cid = req.body.conversation_id;
-  const conversation_id = (raw_cid && raw_cid !== 'null' && raw_cid !== 'undefined') ? raw_cid : null;
   const resumeFile = req.file;
 
-  // resume 和 jd 允许为空（后续提交时复用 Dify 已有内容）
-  // 只有 action 是必填的
-  if (!action || !action.trim()) {
-    return res.status(400).json({ error: '请指定 action' });
+  // 校验输入
+  if (!action || !VALID_ACTIONS.includes(action.trim())) {
+    return res.status(400).json({
+      error: `action 无效，必须是以下之一：${VALID_ACTIONS.join(', ')}`,
+    });
+  }
+  if (!resumeFile || resumeFile.size === 0) {
+    return res.status(400).json({ error: '请上传简历文件' });
+  }
+  if (!jd || !jd.trim()) {
+    return res.status(400).json({ error: '请填写职位描述（JD）' });
   }
 
   const apiKey = process.env.DIFY_API_KEY;
@@ -28,142 +94,133 @@ router.post('/resume-assistant', upload.single('resume'), async (req, res) => {
     return res.status(500).json({ error: '服务器未配置 DIFY_API_KEY' });
   }
 
-  const appMode = (process.env.DIFY_APP_MODE || 'chatflow').toLowerCase();
   const timings = {};
-
-  const hasResume = resumeFile && resumeFile.size > 0;
-  const hasJd = jd && jd.trim().length > 0;
-  const isFollowUp = !!conversation_id;
-
-  console.log(`\n========== 新请求 ${new Date().toLocaleTimeString('zh-CN', {hour12:false})} ==========`);
-  console.log(`[参数] action=${action}  jd=${hasJd ? jd.trim().length + '字' : '（复用）'}  简历=${hasResume ? resumeFile.originalname : '（复用）'}  followUp=${isFollowUp}`);
-  console.log(`[模式] DIFY_APP_MODE=${appMode}  目标=${DIFY_BASE_URL}`);
+  const ts = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  console.log(`\n========== [${ts}] action=${action.trim()}  resume=${resumeFile.originalname} ==========`);
 
   try {
-    // ── Step 1：上传文件（仅当有新简历时执行）────────────────
-    let uploadFileId = null;
+    // ── Step 1：上传简历文件到 Dify ──────────────────────────
+    const fileForm = new FormData();
+    fileForm.append('file', resumeFile.buffer, {
+      filename:    resumeFile.originalname,
+      contentType: resumeFile.mimetype,
+    });
+    fileForm.append('user', DIFY_USER);
 
-    if (hasResume) {
-      const fileForm = new FormData();
-      fileForm.append('file', resumeFile.buffer, {
-        filename: resumeFile.originalname,
-        contentType: resumeFile.mimetype,
+    const t1 = Date.now();
+    let uploadFileId;
+    try {
+      const uploadRes = await axios.post(`${DIFY_BASE_URL}/files/upload`, fileForm, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          ...fileForm.getHeaders(),
+        },
       });
-      fileForm.append('user', DIFY_USER);
-
-      const t1 = Date.now();
-      let uploadRes;
-      try {
-        uploadRes = await axios.post(`${DIFY_BASE_URL}/files/upload`, fileForm, {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            ...fileForm.getHeaders(),
-          },
-        });
-        timings['Step1 上传文件'] = `${Date.now() - t1}ms  ✓  upload_file_id=${uploadRes.data.id}`;
-      } catch (uploadErr) {
-        timings['Step1 上传文件'] = `${Date.now() - t1}ms  ✗  HTTP ${uploadErr.response?.status}`;
-        const status = uploadErr.response?.status;
-        const body = uploadErr.response?.data;
-        console.error(`[Step 1] 失败 HTTP ${status}，响应体:`, JSON.stringify(body, null, 2));
-        printTimings(timings);
-        return res.status(status || 502).json({ error: `文件上传到 Dify 失败（HTTP ${status}）`, detail: body });
-      }
-
-      uploadFileId = uploadRes.data.id;
-      if (!uploadFileId) {
-        console.error(`[Step 1] 响应中没有 id 字段:`, JSON.stringify(uploadRes.data, null, 2));
-        printTimings(timings);
-        return res.status(502).json({ error: '文件上传到 Dify 失败，未获取到 upload_file_id' });
-      }
-    } else {
-      timings['Step1 上传文件'] = '跳过（复用已有简历）';
+      uploadFileId = uploadRes.data?.id;
+      if (!uploadFileId) throw new Error('响应中没有 id 字段');
+      timings['Step1 上传文件'] = `${Date.now() - t1}ms  ✓  id=${uploadFileId}`;
+    } catch (err) {
+      timings['Step1 上传文件'] = `${Date.now() - t1}ms  ✗`;
+      const status = err.response?.status;
+      const body   = err.response?.data;
+      console.error('[Step 1] 上传失败', body ?? err.message);
+      printTimings(timings);
+      return res.status(status || 502).json({
+        error:  `文件上传到 Dify 失败（HTTP ${status ?? 'N/A'}）`,
+        detail: body,
+      });
     }
 
-    // ── 构造 inputs ───────────────────────────────────────────
-    // action 必传；jd 和 resume 是选填，只在有新内容时才传
-    const inputs = { action: action.trim() };
-    if (hasJd)        inputs.jd     = jd.trim();
-    if (uploadFileId) inputs.resume = { transfer_method: 'local_file', upload_file_id: uploadFileId, type: 'document' };
+    // ── Step 2：调用 Dify 接口 ────────────────────────────────
+    const inputs = {
+      action: action.trim(),
+      jd:     jd.trim(),
+      resume: {
+        transfer_method: 'local_file',
+        upload_file_id:  uploadFileId,
+        type:            'document',
+      },
+    };
 
-    let answer;
-    let returnedConversationId = conversation_id || null;
+    const appMode = (process.env.DIFY_APP_MODE || 'workflow').toLowerCase();
+    const t2 = Date.now();
+    let rawAnswer = '';
 
     if (appMode === 'workflow') {
-      // Workflow 模式：每次独立运行，无 conversation_id 概念
-      const workflowBody = {
-        inputs,
-        response_mode: 'blocking',
-        user: DIFY_USER,
-      };
-      console.log(`[Step 2] Workflow 请求体:`, JSON.stringify(workflowBody, null, 2));
-
-      const t2 = Date.now();
-      let workflowRes;
+      const body = { inputs, response_mode: 'blocking', user: DIFY_USER };
+      console.log('[Step 2] Workflow 请求  inputs.action =', inputs.action);
       try {
-        workflowRes = await axios.post(`${DIFY_BASE_URL}/workflows/run`, workflowBody, {
+        const wfRes = await axios.post(`${DIFY_BASE_URL}/workflows/run`, body, {
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         });
+        rawAnswer = wfRes.data?.data?.outputs?.text
+                 ?? wfRes.data?.data?.outputs?.answer
+                 ?? '';
         timings['Step2 调用Workflow'] = `${Date.now() - t2}ms  ✓`;
-      } catch (wfErr) {
-        timings['Step2 调用Workflow'] = `${Date.now() - t2}ms  ✗  HTTP ${wfErr.response?.status}`;
-        const status = wfErr.response?.status;
-        const body = wfErr.response?.data;
-        console.error(`[Step 2] 失败 HTTP ${status}，响应体:`, JSON.stringify(body, null, 2));
+      } catch (err) {
+        timings['Step2 调用Workflow'] = `${Date.now() - t2}ms  ✗`;
+        const status = err.response?.status;
+        const body   = err.response?.data;
+        console.error('[Step 2] Workflow 失败', body ?? err.message);
         printTimings(timings);
-        return res.status(status || 502).json({ error: `Dify Workflow 调用失败（HTTP ${status}）`, detail: body });
+        return res.status(status || 502).json({
+          error:  `Dify Workflow 调用失败（HTTP ${status ?? 'N/A'}）`,
+          detail: body,
+        });
       }
-
-      answer = workflowRes.data?.data?.outputs?.text;
-
     } else {
-      // Chatflow 模式：传 conversation_id 复用对话历史
-      const chatBody = {
+      const body = {
         inputs,
-        query: '请根据 action 执行对应任务',
+        query:         '请根据 action 执行对应任务',
         response_mode: 'blocking',
-        user: DIFY_USER,
+        user:          DIFY_USER,
       };
-      if (conversation_id) {
-        chatBody.conversation_id = conversation_id;
-      }
-      console.log(`[Step 2] Chatflow 请求体:`, JSON.stringify(chatBody, null, 2));
-
-      const t2 = Date.now();
-      let chatRes;
+      console.log('[Step 2] Chatflow 请求  inputs.action =', inputs.action);
       try {
-        chatRes = await axios.post(`${DIFY_BASE_URL}/chat-messages`, chatBody, {
+        const chatRes = await axios.post(`${DIFY_BASE_URL}/chat-messages`, body, {
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         });
+        rawAnswer = chatRes.data?.answer ?? '';
         timings['Step2 调用Chatflow'] = `${Date.now() - t2}ms  ✓`;
-      } catch (chatErr) {
-        timings['Step2 调用Chatflow'] = `${Date.now() - t2}ms  ✗  HTTP ${chatErr.response?.status}`;
-        const status = chatErr.response?.status;
-        const body = chatErr.response?.data;
-        console.error(`[Step 2] 失败 HTTP ${status}，响应体:`, JSON.stringify(body, null, 2));
+      } catch (err) {
+        timings['Step2 调用Chatflow'] = `${Date.now() - t2}ms  ✗`;
+        const status = err.response?.status;
+        const body   = err.response?.data;
+        console.error('[Step 2] Chatflow 失败', body ?? err.message);
         printTimings(timings);
-        return res.status(status || 502).json({ error: `Dify Chat 调用失败（HTTP ${status}）`, detail: body });
+        return res.status(status || 502).json({
+          error:  `Dify Chatflow 调用失败（HTTP ${status ?? 'N/A'}）`,
+          detail: body,
+        });
       }
-
-      answer = chatRes.data.answer;
-      // 返回 conversation_id 给前端，供后续请求复用
-      returnedConversationId = chatRes.data.conversation_id || returnedConversationId;
     }
 
+    // ── Step 3：解析 JSON 并按 action 整理结果 ───────────────
+    const t3 = Date.now();
+    const json      = extractJson(rawAnswer);
+    const formatted = formatResult(json, action.trim());
+    timings['Step3 解析结果'] = `${Date.now() - t3}ms  ✓  parsed=${!!formatted}`;
+
     printTimings(timings);
-    return res.json({ answer, conversation_id: returnedConversationId });
+
+    if (!formatted) {
+      // JSON 解析失败，降级返回原始文本
+      return res.json({ answer: rawAnswer, action: action.trim(), parsed: false });
+    }
+
+    return res.json({ answer: JSON.stringify(formatted), action: action.trim(), parsed: true });
 
   } catch (err) {
-    console.error(`[未捕获异常]`, err);
+    console.error('[未捕获异常]', err);
     printTimings(timings);
     return res.status(500).json({ error: `服务器内部错误：${err.message}` });
   }
 });
 
 function printTimings(timings) {
-  console.log(`\n---------- 耗时汇总 ----------`);
+  console.log('---------- 耗时汇总 ----------');
   Object.entries(timings).forEach(([step, info]) => console.log(`  ${step}: ${info}`));
-  console.log(`------------------------------\n`);
+  console.log('------------------------------\n');
 }
 
 module.exports = router;

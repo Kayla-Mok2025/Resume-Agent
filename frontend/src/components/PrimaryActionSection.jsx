@@ -5,10 +5,9 @@ const CREAM_WH = '#FFF9EE';
 
 export default function PrimaryActionSection({
   uploadState, jd, selectedAction, analysisState, onStart, onValidationFail,
-  resumeSentToServer, jdSentToServer,
 }) {
-  const resumeOk = uploadState === 'success' || resumeSentToServer;
-  const jdOk = jd.trim().length > 0 || jdSentToServer;
+  const resumeOk = uploadState === 'success';
+  const jdOk = jd.trim().length > 0;
   const isReady = resumeOk && jdOk && !!selectedAction;
   const isAnalyzing = analysisState === 'analyzing';
 

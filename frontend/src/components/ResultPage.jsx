@@ -5,7 +5,7 @@ const ACTION_LABELS = {
   match_score: '岗位匹配度分析',
   polish_experience: '简历优化建议',
   custom_intro: '定制自我介绍',
-  interview_questions: '高频面试问题预测',
+  question_prediction: '高频面试问题预测',
 };
 
 function CatLogo() {
@@ -73,18 +73,11 @@ export default function ResultPage({ result, error, selectedAction, onBack }) {
         </div>
 
         {error ? (
-          <div className="rounded-2xl px-6 py-5"
-            style={{ background: '#FFF5F5', boxShadow: '0 0 0 1.5px rgba(239,68,68,0.2)' }}>
-            <div className="flex items-start gap-3">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 mt-0.5">
-                <circle cx="12" cy="12" r="10" fill="#FEE2E2" />
-                <path d="M12 8v4M12 16h.01" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-              <div>
-                <p className="font-semibold text-sm mb-1" style={{ color: '#B91C1C' }}>分析失败</p>
-                <p className="text-sm whitespace-pre-wrap" style={{ color: '#7F1D1D' }}>{error}</p>
-              </div>
-            </div>
+          <div className="rounded-2xl px-8 py-10 text-center"
+            style={{ background: '#FFF9EE', boxShadow: '0 4px 24px rgba(252,125,54,0.12), 0 8px 40px rgba(0,0,0,0.08)' }}>
+            <div className="text-5xl mb-5">😴</div>
+            <p className="font-bold text-[20px] mb-2" style={{ color: '#2D1600' }}>{error}</p>
+            <p className="text-sm" style={{ color: '#999' }}>如有疑问请联系我们</p>
           </div>
         ) : (
           <DifyResultRenderer result={result} action={selectedAction} />
