@@ -8,3 +8,6 @@ backend/.env
 frontend/.env
 .DS_Store
 .claude
+
+# 前端构建产物（由 Dockerfile 内构建，不需要入库）
+backend/public/
